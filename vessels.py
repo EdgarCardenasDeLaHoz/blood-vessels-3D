@@ -48,7 +48,6 @@ def analyze_BV(fn, draw_figures=1):
     d_skel = d_seg* (skel>0)*1
     b_seg =  d_seg>0
 
-    
     ## Skeletonization
     G_skel = skan.Skeleton(d_skel)
 
@@ -94,7 +93,9 @@ def save_dataset(fn_in,im):
     fn_out = folder + fileparts[-1]
     fn_out = fn_out.replace(".tif",".H5")
 
-    if not os.path.exists(fn_out): 
+    if os.path.exists(fn_out): 
+        return
+    else:  
         save_h5(fn_out,im)
 
 ##########################
@@ -110,9 +111,11 @@ def segment_BV(im, axis_scale=None):
 
     im = downsample(im,scale=0.5)
     
+    im = im/255 ## operate in floats now. 
+    
     im1 = im.copy()
-    #im_min = np.mean(im1,axis=(1,2,3))[:,None,None,None]
 
+    ## Background subtraction
     im_min = ndi.uniform_filter( im1, size=(1,50,50))
     im1 = im1 - im_min
     im1[im1<0] = 0
@@ -140,7 +143,7 @@ def segment_BV(im, axis_scale=None):
 
     d_seg[~seg] = 0
 
-    return im, im1,d_seg,skel
+    return im, im1, d_seg, skel
 
 def area_filter(ar, min_size=0, max_size=None):
     """
@@ -171,7 +174,6 @@ def downsample(im,scale=0.5):
 
     sz = tuple((np.array(im.shape)[[1,2]]*scale).astype(np.int))
     im = np.array([cv2.resize(I,sz) for I in im])
-    im = im/255
 
     return im 
 
