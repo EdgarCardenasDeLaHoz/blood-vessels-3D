@@ -36,28 +36,32 @@ def process_folder(path):
 
     summary_figure(all_df,path)
 
-def analyze_BV(fn):
+def analyze_BV(fn, draw_figures=1):
 
     ## Input
     im = read_data_BV(fn)
     save_dataset(fn, im )
 
-    ## Process
-    im = downsample(im,scale=0.5)
-    im1,d_seg,skel = segment_BV(im)    
-    d_skel = d_seg*skel
+    ## Segmentation
+    imO, im1,d_seg,skel = segment_BV(im)    
+
+    d_skel = d_seg* (skel>0)*1
     b_seg =  d_seg>0
 
+    
+    ## Skeletonization
     G_skel = skan.Skeleton(d_skel)
 
-    draw_graph_2D(fn, G_skel)
-
-    ## Output 
-    images = (im, im1, d_seg, skel)
-    render_videos(fn, images, G_skel)
-   
+    ## Measurement
     df_vessel = measure_vessel(fn, G_skel, b_seg)
 
+    ## Drawing
+    if draw_figures:
+        ## Output 
+        images = (imO, im1, d_seg, skel)
+        draw_graph_2D(fn, G_skel)
+        render_videos(fn, images, G_skel)
+   
     return df_vessel
 
 ###########################
@@ -97,11 +101,17 @@ def save_dataset(fn_in,im):
 #      Image Processing
 ###########################
 
-def segment_BV(im):
+def segment_BV(im, axis_scale=None):
+
+    if axis_scale is None:
+        axis_scale = np.array([1.83,1,1])
+
+    if len(im)==1: im = im[0]
+
+    im = downsample(im,scale=0.5)
     
     im1 = im.copy()
     #im_min = np.mean(im1,axis=(1,2,3))[:,None,None,None]
-    ####
 
     im_min = ndi.uniform_filter( im1, size=(1,50,50))
     im1 = im1 - im_min
@@ -123,14 +133,14 @@ def segment_BV(im):
     seg = morphology.remove_small_holes(seg, 5000)
     skel  = morphology.skeletonize(seg)*1
 
-    dist = np.array(ndi.distance_transform_edt(seg,[5,1,1]) )
+    dist = np.array(ndi.distance_transform_edt(seg,axis_scale) )
 
-    _, inds = ndi.distance_transform_edt(~skel, sampling=[5,1,1], return_indices=True)
+    _, inds = ndi.distance_transform_edt(~skel, sampling=axis_scale, return_indices=True)
     d_seg = dist[inds[0],inds[1],inds[2]]    
 
     d_seg[~seg] = 0
 
-    return im1,d_seg,skel
+    return im, im1,d_seg,skel
 
 def area_filter(ar, min_size=0, max_size=None):
     """
@@ -159,7 +169,6 @@ def area_filter(ar, min_size=0, max_size=None):
 
 def downsample(im,scale=0.5):
 
-    im = im[0]
     sz = tuple((np.array(im.shape)[[1,2]]*scale).astype(np.int))
     im = np.array([cv2.resize(I,sz) for I in im])
     im = im/255
@@ -173,6 +182,8 @@ def downsample(im,scale=0.5):
 def measure_vessel(fn, G_skel, b_seg,):
 
     df_skel = skan.summarize(G_skel)
+
+    print(df_skel)
 
     df_skel["tortuosity"] = df_skel['euclidean-distance'] / df_skel['branch-distance']
     print_vessel_measurements(df_skel)
@@ -207,7 +218,7 @@ def print_vessel_measurements(df_skel):
 
     fig, axs = plt.subplots(2,2, figsize= (14,8))
 
-    columns = ["branch-distance", "mean-pixel-value"]
+    columns   = ["branch-distance", "mean-pixel-value"]
     col_names = ["Branch_Length", "Branch_Thickness"]
     for n,col in enumerate(columns):
         ax = axs.ravel()[n]
@@ -217,14 +228,14 @@ def print_vessel_measurements(df_skel):
         ax.grid(True)
 
     x = df_skel["branch-distance"][::10]
-    y = df_skel[ "mean-pixel-value"][::10]
+    y = df_skel["mean-pixel-value"][::10]
     axs[1,0].set_xlabel("Branch_Length (pixels)")
     axs[1,0].set_ylabel("Thickness (pixels)")
     axs[1,0].plot(x,y,".")
     axs[1,0].grid(True)
 
     x = df_skel["branch-distance"][::10]
-    y = df_skel[ "tortuosity"][::10]
+    y = df_skel["tortuosity"][::10]
     axs[1,1].set_xlabel("Branch_Length (pixels)")
     axs[1,1].set_ylabel("Tortuosity")
     axs[1,1].plot(x,y,".")
